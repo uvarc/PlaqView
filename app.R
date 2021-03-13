@@ -133,11 +133,15 @@ ui <- fluidPage(
                                   fluidRow( # top splite rows
                                     column(width = 6, align="center", plotOutput("umaps", 
                                                                                  width = "auto",
-                                                                                 height = '500px')),
+                                                                                 height = '500px'),
+                                           ),
                                     column(width = 6, align="center", 
-                                           conditionalPanel('input.selectaplot=="Ridge"', plotOutput("Ridge",
-                                                                                                     width = "auto",
-                                                                                                     height = '500px')),
+                                           conditionalPanel('input.selectaplot=="Ridge"', 
+                                                            plotOutput("Ridge",
+                                                                       width = "auto",
+                                                                       height = '500px'), 
+                                                            downloadButton(outputId = "downloadridge", label = "Download Ridge Plot")
+                                                            ), # conditional panel
                                            conditionalPanel('input.selectaplot=="Dot"', plotOutput("Dot",
                                                                                                    width = "auto",
                                                                                                    height = '500px')), # conditonal panels renders only if conditions are met
@@ -146,6 +150,7 @@ ui <- fluidPage(
                                                                                                        height = '500px'))
                                            
                                     ) # column 
+                                    
                                     
                                   ), # fluidrow
                                   br(),
@@ -272,6 +277,13 @@ ui <- fluidPage(
              ), # tabPanel
 
              # PANEL 4: Druggable Genome ----  
+             tabPanel("Druggable Genome",
+                      
+                      mainPanel(width = 12, # 12/12 is full panel,
+
+                                helpText("This feature is under development! Check back soon for updates.")
+                      ), # close mainpanel
+             ), # close tab panel
              
              # PANEL 5: EXPLORE YOUR OWN DATA ----  
              tabPanel("Explore Your Own Dataset",
@@ -312,7 +324,8 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
   #### PANEL #1 FUNCTIONS ####
-  # UMAP plot, interactive #
+  #### umap plot ####
+
   observeEvent(input$runcode,{ 
     output$umaps <- 
       renderPlot(
@@ -334,50 +347,89 @@ server <- function(input, output) {
       ) # closes renderPlot
   })# closes observe event
   
-  # Gene expression plots #
-  # dot
+  #### pathway enrichment ####
+  output$panel1left <- downloadHandler(
+    filename = function() {
+      paste(input$genes, "_pathwayenrichment.csv", sep = "")
+    },
+    content = function(file) {
+      write.csv(enriched[[input$selectedenrichRdb]], file, row.names = FALSE)
+    } 
+  )# close downloadhandler
+  
+
+
+  #### dot plot ####
+  user_genes <- str_split(
+    reactive(input$genes), ", ")[[1]]
+  
+
+  
   observeEvent(input$runcode,{ # observe event puts a pause until pushed
     output$Dot <- renderPlot({
-      # parse string input 
-      user_genes <- str_split(input$genes, ", ")[[1]]
       validate(need(input$selectaplot=="Dot", message=FALSE))
-      DotPlot(stanford, 
-              group.by = input$selectlabelmethodforgenequery,
-              features = user_genes) + # a trick to sep long string input
+      dotplot <- DotPlot(stanford, 
+                         group.by = input$selectlabelmethodforgenequery,
+                         features = user_genes()) + # a trick to sep long string input
         ggtitle("Expression Dot Plot") +
         theme(plot.title = element_text(hjust = 1)) +
         theme(plot.title = element_text(hjust = 0.5)) 
-      
-      
+      dotplot
     })
-    # feature
-    parsed.genes <- str_split(input$genes, ", ")[[1]]
+    
+    
+    #### feature plot ####
+
+    
     output$Feature <- renderPlot({
-      user_genes <- str_split(input$genes, ", ")[[1]]
       validate(need(input$selectaplot=="Feature", message=FALSE))
-      FeaturePlot(stanford, 
-                  features = user_genes[1:4]) + # a trick to sep long string input
+      user_genes <- str_split(input$genes, ", ")[[1]]
+      
+      featureplot <- FeaturePlot(stanford, 
+                                 features = user_genes[1:4],
+                                 pt.size = 5,
+                                 order = T) + # a trick to sep long string input
         theme(legend.position="bottom", legend.box = "vertical") + # group.by is important, use this to call metadata separation
         theme(plot.title = element_text(hjust = 1)) +
         theme(plot.title = element_text(hjust =  0.5)) 
       
+      featureplot
     }) 
-    #ridge
-    output$Ridge <- renderPlot({
-      user_genes <- str_split(input$genes, ", ")[[1]]
-      validate(need(input$selectaplot=="Ridge", message=FALSE))
-      RidgePlot(stanford,
-                cols = manual_color_list,
-                group.by = input$selectlabelmethodforgenequery,
-                features =  user_genes[1:1]
-                ) + # a trick to sep long string input
-        #theme(legend.position="bottom", legend.box = "vertical") + # group.by is important, use this to call metadata separation
-        theme(plot.title = element_text(hjust =  0.5)) +
-        guides(color = guide_legend(nrow = 3))
-      
-    })
     
-    # cell population 
+    #### ridge plot ####
+    ridgeplot <- RidgePlot(stanford,
+                           cols = manual_color_list,
+                           group.by = input$selectlabelmethodforgenequery,
+                           features =  user_genes[1:1]
+    ) + # a trick to sep long string input
+      #theme(legend.position="bottom", legend.box = "vertical") + # group.by is important, use this to call metadata separation
+      theme(plot.title = element_text(hjust =  0.5)) +
+      guides(color = guide_legend(nrow = 3))
+    
+
+    output$Ridge <- renderPlot({
+      validate(need(input$selectaplot=="Ridge", message=FALSE))
+      ridgeplot
+    })
+
+    
+    # download ridge plot 
+    output$downloadridge<- downloadHandler(
+      filename = function() {
+        paste(user_genes, "_ridgeplot.pdf", sep = "")
+      },
+      content = function(file) {
+        pdf(file, paper = "default")
+        
+        plot(ridgeplot) #this is all you need
+  
+        dev.off()
+      }
+      
+    )# close downloadhandler
+    
+    
+    #### cellpop plot ####
     output$cellpopulation <- renderPlot({
       # this chunk is to calculate population statistics 
       cellcounts <- stanford@meta.data[[input$selectlabelmethodforgenequery]] # extract cell names
