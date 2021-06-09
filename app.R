@@ -426,7 +426,7 @@ server <- function(input, output) {
                         escape = FALSE) # this escapes rendering html (link) literally and makes link clickable
   
   observeEvent(input$loaddatabutton, {
-    path <- file.path(paste("data/", df$DataID[input$availabledatasettable_rows_selected], "/",
+    path <- file.path(paste("/mnt/qproject/cphg-millerlab/WeiMa/Project/PlaqView/data/", df$DataID[input$availabledatasettable_rows_selected], "/",
                             df$DataID[input$availabledatasettable_rows_selected],
                             ".rds", sep=""))
     plaqviewobj <<- readRDS(file = path)
@@ -744,14 +744,14 @@ server <- function(input, output) {
   
   #### PANEL #3 FUNCTIONS ####
   output$lefttrajectorygraph <- renderPlot(
-    readRDS(file =  normalizePath(file.path('data/', # this will dynamically read the file containing the right name
+    readRDS(file =  normalizePath(file.path('/mnt/qproject/cphg-millerlab/WeiMa/Project/PlaqView/data/', # this will dynamically read the file containing the right name
                                             df$DataID[input$availabledatasettable_rows_selected], "/",
                                             paste(input$lefttrajectorymethod, '.rds', sep=''))))
     
   ) # renderplot 
   
   output$righttrajectorygraph <- renderPlot(
-    readRDS(file =  normalizePath(file.path('data/', # this will dynamically read the file containing the right name
+    readRDS(file =  normalizePath(file.path('/mnt/qproject/cphg-millerlab/WeiMa/Project/PlaqView/data/', # this will dynamically read the file containing the right name
                                             df$DataID[input$availabledatasettable_rows_selected], "/",
                                             paste(input$righttrajectorymethod, '.rds', sep='')))) 
   ) # renderplot 
