@@ -60,13 +60,13 @@ manual_color_list <- color_function(40) # change this if clusters >40
 # Define UI for application that draws a histogram
 ui <- fluidPage(
   
-  # set theme
+  # AESTHETICS####
   theme = shinytheme("flatly"),
   add_busy_bar(color = "#ff9142", height = "100px"), # THIS IS THE BUSY BAR
   use_waiter(), 
   waiter_show_on_load(html = spin_rotate()),
   useShinyjs(),
-  
+
   # defining each 'tab' here
   navbarPage("PlaqView", id = "inTabset",
              
@@ -140,6 +140,7 @@ ui <- fluidPage(
                                                   choices = list(
                                                     "Author Supplied" = "manually_annotated_labels",
                                                     "SingleR (Individual Cell ID)" = "SingleR.calls",
+                                                    "Seurat + Tabula sapiens Ref" = "predicted.id_tabulus.sapien",
                                                     "Seurat Clusters (Numbered)" = "seurat_clusters",
                                                     "scCATCH (Heart)" = "scCATCH_Heart",
                                                     "scCATCH (Blood Vessels)" = "scCATCH_BV"),
@@ -233,6 +234,8 @@ ui <- fluidPage(
                                                        choices = list(
                                                          "Author Supplied (Manual)" = "manually_annotated_labels",
                                                          "SingleR (Individual Cell ID)" = "SingleR.calls",
+                                                         "Seurat + Tabula sapiens Ref" = "predicted.id_tabulus.sapien",
+                                                         
                                                          "Seurat Clusters (Numbered)" = "seurat_clusters",
                                                          "scCATCH (Heart)" = "scCATCH_Heart",
                                                          "scCATCH (Blood Vessels)" = "scCATCH_BV"),
@@ -246,8 +249,10 @@ ui <- fluidPage(
                                                        choices = list(
                                                          "SingleR (Individual Cell ID)" = "SingleR.calls",
                                                          "Seurat Clusters (Numbered)" = "seurat_clusters",
+                                                         "Seurat + Tabula sapiens Ref" = "predicted.id_tabulus.sapien",
+                                                         
                                                          "scCATCH (Heart)" = "scCATCH_Heart",
-                                                         "scCATCH (Blood Vessels)" = "scCATCH_BV"),
+                                                          "scCATCH (Blood Vessels)" = "scCATCH_BV"),
                                                        selected = "SingleR (Individual Cell ID)"),
                                            plotOutput("rightlabelplot",
                                                       height = '500px')
@@ -265,7 +270,9 @@ ui <- fluidPage(
                                     
                                     column(width = 6, h4("Differential Expression by Cell Type"),
                                            downloadButton("diffbysingleR", "SingleR"),
-                                           helpText("This will download a .csv of differentially expressed genes as identified by singleR")
+                                           downloadButton("diffbyTS", "Seurat + Tabula sapiens"),
+                                           
+                                           helpText("This will download a .csv of differentially expressed genes as identified by individual cells")
                                     ) # column
                                   ) # fluidrow
                                 ) # close wellpanel
@@ -337,18 +344,19 @@ ui <- fluidPage(
                                              choices = list(
                                                "SingleR (Individual Cell ID)" = "SingleR.calls",
                                                "Author Supplied (Manual)" = "manually_annotated_labels",
+                                               "Seurat + Tabula sapiens Ref" = "predicted.id_tabulus.sapien",
+                                               
                                                "Seurat Clusters (Numbered)" = "seurat_clusters",
                                                "scCATCH (Heart)" = "scCATCH_Heart",
                                                "scCATCH (Blood Vessels)" = "scCATCH_BV"),
                                              selected = "SingleR (Individual Cell ID)"),
                                  ),
                                 
-                                 awesomeCheckboxGroup(
+                                 checkboxGroupInput(
                                    inputId = "dgidbdatabase",
                                    label = "Choose a Database", 
                                    inline = TRUE, 
-                                   status = "danger",
-                                   selected = "FDA",
+                                   selected = c("FDA", "DrugBank"),
                                    choices = sourceDatabases()
                                  ),
                                  
@@ -378,7 +386,11 @@ ui <- fluidPage(
                         # descriptions
                         includeMarkdown("descriptionfiles/aboutusdescription.Rmd"),
                         br(),
+                        img(src = "millerlablogo.png", height = 83),
                         img(src = "MSTPlogo.png", width = 233, height = 83),
+                        img(src = "umc.png", height = 83),
+                        br(),
+          
                         img(src = "PlaqOmics.png", width = 233, height = 83),
                         img(src = "Leducq.png", width = 233, height = 83),
                         
@@ -388,6 +400,7 @@ ui <- fluidPage(
                         
                         
                       )) # close tab panel
+
              
   )# close navbarpage
   
@@ -397,7 +410,7 @@ ui <- fluidPage(
 
 
 
-
+            
 #### SERVER ####
 # Define server logic required to draw a histogram
 server <- function(input, output) {
@@ -722,6 +735,13 @@ server <- function(input, output) {
                       "diff_by_singleR.csv", sep = ""), file)      
     }  )# close downloadhandler
   
+  output$diffbyTS <- downloadHandler(
+    filename = "differential_markergenes_by_tabulus_sapien_reference.csv",
+    content = function(file) {
+      file.copy(paste("data/", df$DataID[input$availabledatasettable_rows_selected], "/",
+                      "diff_by_predicted.id_tabulus.sapien.csv", sep = ""), file)      
+    }  )# close downloadhandler
+  
   #### PANEL #3 FUNCTIONS ####
   output$lefttrajectorygraph <- renderPlot(
     readRDS(file =  normalizePath(file.path('data/', # this will dynamically read the file containing the right name
@@ -755,19 +775,34 @@ server <- function(input, output) {
                          sourceDatabases = input$dgidbdatabase)
     fulltable <- result@data[["interactions"]][[1]]
     
-    isolatedtable <-  fulltable %>% # reorder columns
-      select("Drug_Name" = drugName, 
-             "Interaction_Types" = interactionTypes, # rename columns might as well :)
-             "Int_Score" = score , 
-             #pmids, 
-             #sources, 
-             "Drug_ConceptID" = drugConceptId
-             )
+    # so if table becomes a list (empty), run the following
+    # this is a table to show no drugs available
+    if (class(fulltable) == "list" ) {
+      nodrug <- matrix(c("No Drugs Found"),ncol=4,byrow=TRUE)
+      colnames(nodrug) <- c("drugName","interactionTypes","score","drugConceptId")
+      nodrug <- as_data_frame(nodrug)
+      
+      isolatedtable <- nodrug
+      fulltable <- nodrug
+      
+      }
     
-    # these need to be run to 'flatten' the list-type columns
-    fulltable <- fulltable %>% mutate(interactionTypes = map_chr(interactionTypes, toString))
-    fulltable <- fulltable %>% mutate(sources = map_chr(sources, toString))
-    fulltable <- fulltable %>% mutate(pmids = map_chr(pmids, toString))
+    if (class(fulltable) == "data.frame" ) {
+      isolatedtable <-  fulltable %>% # reorder columns
+        select("Drug_Name" = drugName, 
+               "Interaction_Types" = interactionTypes, # rename columns might as well :)
+               "Int_Score" = score , 
+               #pmids, 
+               #sources, 
+               "Drug_ConceptID" = drugConceptId
+        )
+      
+      # these need to be run to 'flatten' the list-type columns
+      fulltable <- fulltable %>% mutate(interactionTypes = map_chr(interactionTypes, toString))
+      fulltable <- fulltable %>% mutate(sources = map_chr(sources, toString))
+      fulltable <- fulltable %>% mutate(pmids = map_chr(pmids, toString))
+    }
+    
     
     output$dgidboutput <- DT::renderDataTable(isolatedtable, )
     output$downloaddgidboutput <- downloadHandler(
@@ -779,7 +814,9 @@ server <- function(input, output) {
       } 
     )# close downloadhandler
     
-# 
+    # complete druggable genome
+    # finan.genome <- read_delim("/data/Druggable_genome_finan.txt", 
+    #                            "\t", escape_double = FALSE, trim_ws = TRUE)
   })# observer event
   
   #### PANEL #6 FUNCTIONS #### 
@@ -790,7 +827,7 @@ server <- function(input, output) {
       write_lines(sessionInfo(), file)
     }  )# close downloadhandler
   
-  #### waiter hide ####
+  #### Waiter ####
   waiter_hide()
   
   
